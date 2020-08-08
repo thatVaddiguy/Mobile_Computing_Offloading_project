@@ -7,58 +7,57 @@
 
     <TextView
         android:id="@+id/name"
-        style="@style/StatusText"
         android:layout_width="match_parent"
         android:layout_height="58dp" />
 
     <TextView
         android:id="@+id/opponent_name"
-        style="@style/StatusText"
         android:layout_width="match_parent"
         android:layout_height="58dp" />
 
     <TextView
         android:id="@+id/status"
-        style="@style/StatusText"
         android:layout_width="match_parent"
         android:layout_height="51dp" />
 
 
     <TextView
         android:id="@+id/latitude"
-        style="@style/StatusText"
+        android:layout_width="match_parent"
         android:layout_height="51dp" />
 
     <TextView
         android:id="@+id/longitude"
-        style="@style/StatusText"
+        android:layout_width="match_parent"
         android:layout_height="51dp" />
 
     <TextView
         android:id="@+id/batteryStatusText"
-        style="@style/StatusText"
+
         android:layout_width="match_parent"
         android:layout_height="47dp"
-        android:text="Battery Status:" />
+        android:text="Battery Level:" />
     <FrameLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content">
+
         <ProgressBar
             android:id="@+id/progressBar6"
             style="@android:style/Widget.ProgressBar.Horizontal"
-            android:layout_width="96dp"
+            android:layout_width="match_parent"
             android:layout_height="40dp"
             android:progressTint="#a4c639" />
+
         <TextView
             android:id="@+id/batteryLevel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="142dp"
+            android:layout_height="match_parent"
             android:gravity="center_horizontal"
             android:paddingLeft="8dp"
             android:paddingTop="4dp"
             android:paddingRight="8dp"
             android:textStyle="bold"
-            style="@style/StatusText"
+
             />
     </FrameLayout>
     <TextView
@@ -75,8 +74,8 @@
 
     <TextView
         android:id="@+id/progressMessage"
-        style="@style/StatusText"
-        android:layout_height="wrap_content" />
+        android:layout_width="match_parent"
+        android:layout_height="42dp" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -87,8 +86,8 @@
         android:id="@+id/find_opponent"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:onClick="findOpponent"
-        android:text="@string/action_find_opponents"
+        android:onClick="findMaster"
+        android:text="Find Master"
         style="@style/Widget.AppCompat.Button.Colored"/>
 
     <Button
@@ -97,5 +96,5 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:onClick="disconnect"
-        android:text="@string/action_disconnect" />
+        android:text="Disconnect" />
 </LinearLayout>
