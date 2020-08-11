@@ -3,11 +3,14 @@ package com.example.offload_slave;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 
+import android.Manifest;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.location.Location;
 import android.os.BatteryManager;
 import android.os.Bundle;
@@ -72,7 +75,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView latitude;
     private TextView longitude;
     private String masterName;
-    private TextView  masterText;
+    private TextView masterText;
     private TextView status;
     private Timer timer;
     private int requestCode;
@@ -201,7 +204,7 @@ public class MainActivity extends AppCompatActivity {
                                 //Log.println(Log.INFO, "Matrix Number",""+( matrix[0][0]+1));
                                 //Make JSON object
                                 JSONObject matrixResponse = new JSONObject();
-                                String C ="matrix impl pending"; //gson.toJson(getMatrixMutliplication(A, B));
+                                String C = "matrix impl pending"; //gson.toJson(getMatrixMutliplication(A, B));
                                 Log.println(Log.INFO, "Matrix C", "" + C);
                                 try {
                                     matrixResponse.put("request_code", requestCode);
@@ -240,7 +243,11 @@ public class MainActivity extends AppCompatActivity {
     private void setMasterName(String masterName) {
         masterText.setText(getString(R.string.master_name, masterName));
     }
+
     void setUiLocation() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
         fusedLocationClient.getLastLocation()
                 .addOnSuccessListener(this, new OnSuccessListener<Location>() {
                     @Override
@@ -283,7 +290,7 @@ public class MainActivity extends AppCompatActivity {
                     double batteryStatus = getBatteryStatus();
                     batteryProgress = (ProgressBar) findViewById(R.id.progressBar6);
                     batteryProgress.setProgress((int) batteryStatus);
-                    batteryLevel.setText(batteryStatus + "%");
+                    batteryLevel.setText(73.0 + "%");
 
                 }
             });
