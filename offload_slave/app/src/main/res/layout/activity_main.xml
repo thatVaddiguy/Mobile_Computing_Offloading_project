@@ -11,7 +11,7 @@
         android:layout_height="58dp" />
 
     <TextView
-        android:id="@+id/opponent_name"
+        android:id="@+id/master_name"
         android:layout_width="match_parent"
         android:layout_height="58dp" />
 
@@ -33,7 +33,6 @@
 
     <TextView
         android:id="@+id/batteryStatusText"
-
         android:layout_width="match_parent"
         android:layout_height="47dp"
         android:text="Battery Level:" />
@@ -83,7 +82,7 @@
         android:orientation="horizontal" />
 
     <Button
-        android:id="@+id/find_opponent"
+        android:id="@+id/find_master"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:onClick="findMaster"

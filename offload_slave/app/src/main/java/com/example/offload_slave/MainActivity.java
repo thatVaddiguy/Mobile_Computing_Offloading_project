@@ -1,13 +1,19 @@
 package com.example.offload_slave;
 
+import androidx.annotation.CallSuper;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
+import android.Manifest;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.location.Location;
 import android.os.BatteryManager;
 import android.os.Bundle;
@@ -21,6 +27,7 @@ import android.widget.Toast;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.nearby.Nearby;
+import com.google.android.gms.nearby.connection.AdvertisingOptions;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
 import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
 import com.google.android.gms.nearby.connection.ConnectionResolution;
@@ -57,8 +64,16 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "Offload Slave";
 
-    private static final Strategy STRATEGY = Strategy.P2P_STAR;
+    private static final String[] REQUIRED_PERMISSIONS =
+            new String[]{
+                    Manifest.permission.BLUETOOTH,
+                    Manifest.permission.BLUETOOTH_ADMIN,
+                    Manifest.permission.ACCESS_WIFI_STATE,
+                    Manifest.permission.CHANGE_WIFI_STATE,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+            };
 
+    private static final Strategy STRATEGY = Strategy.P2P_STAR;
     private String masterEndpointId;
     private Button findMasterButton;
 
@@ -72,22 +87,22 @@ public class MainActivity extends AppCompatActivity {
     private TextView latitude;
     private TextView longitude;
     private String masterName;
-    private TextView  masterText;
+    private TextView masterText;
     private TextView status;
     private Timer timer;
     private int requestCode;
 
     private static int requestCounter = 0;
 
-    private ConnectionsClient connectionsClient;
+    private ConnectionsClient connClient;
 
-    private FusedLocationProviderClient fusedLocationClient;
+    private FusedLocationProviderClient fusedLocationProviderClient;
 
     @Override
     protected void onCreate(@Nullable Bundle bundle) {
         super.onCreate(bundle);
         setContentView(R.layout.activity_main);
-        findMasterButton = findViewById(R.id.find_opponent);
+        findMasterButton = findViewById(R.id.find_master);
         disconnectButton = findViewById(R.id.disconnect);
         progressBar = (ProgressBar) findViewById(R.id.progressBar3);
         progressBar.setVisibility(View.GONE);
@@ -99,10 +114,10 @@ public class MainActivity extends AppCompatActivity {
         longitude = (TextView) findViewById(R.id.longitude);
         latitude.setVisibility(View.GONE);
         longitude.setVisibility(View.GONE);
-        connectionsClient = Nearby.getConnectionsClient(this);
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+        connClient = Nearby.getConnectionsClient(this);
+        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
         setUiLocation();
-        masterText = findViewById(R.id.opponent_name);
+        masterText = findViewById(R.id.master_name);
         status = findViewById(R.id.status);
         TextView nameView = findViewById(R.id.name);
         nameView.setText(getString(R.string.slaveName, "Slave device"));
@@ -112,6 +127,30 @@ public class MainActivity extends AppCompatActivity {
         startDiscovery();
         resetUI();
         findMasterButton.setVisibility(View.GONE);
+    }
+
+    private static boolean hasPermissions(Context context, String... permissions) {
+        for (String permission : permissions) {
+            if (ContextCompat.checkSelfPermission(context, permission)
+                    != PackageManager.PERMISSION_GRANTED) {
+                return false;
+            }
+        }
+        return true;
+    }
+    @Override
+    protected void onStart() {
+        super.onStart();
+
+        if (!hasPermissions(this, REQUIRED_PERMISSIONS)) {
+            requestPermissions(REQUIRED_PERMISSIONS, 1);
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        connClient.stopAllEndpoints();
+        super.onStop();
     }
 
     public class BatteryLocationTimer extends TimerTask {
@@ -139,7 +178,6 @@ public class MainActivity extends AppCompatActivity {
 
                         try {
                             String data = byteSource.asCharSource(Charsets.UTF_8).readFirstLine();
-                            Log.d("Payload : ", data);
                             jsonObject = new JSONObject(data);
                         } catch (IOException e) {
                             e.printStackTrace();
@@ -147,75 +185,41 @@ public class MainActivity extends AppCompatActivity {
                         if (jsonObject.has("request_code")) {
                             requestCode = jsonObject.getInt("request_code");
                         }
-
-                        switch (requestCode) {
-                            case 100:
-                                // Request to monitor battery and location
-
-                                AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(MainActivity.this);
-                                alertDialogBuilder.setMessage("Master send request to start monitoring. Allow him ?");
-                                alertDialogBuilder.setPositiveButton("yes",
-                                        new DialogInterface.OnClickListener() {
-                                            @Override
-                                            public void onClick(DialogInterface arg0, int arg1) {
-                                                TimerTask timerTask = new BatteryLocationTimer();
-                                                //running timer task as daemon thread
-                                                timer = new Timer(true);
-                                                timer.scheduleAtFixedRate(timerTask, 0, 20 * 1000);
-                                            }
-                                        });
-
-                                alertDialogBuilder.setNegativeButton("No", new DialogInterface.OnClickListener() {
-                                    @Override
-                                    public void onClick(DialogInterface dialog, int which) {
-                                        JSONObject obj = new JSONObject();
-                                        try {
-                                            obj.put("request_code", requestCode);
-                                            obj.put("request_status", 500);
-                                            obj.put("device_name", "slave device");
-                                        } catch (JSONException e) {
-                                            e.printStackTrace();
+                        if (requestCode == 100) {
+                            AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(MainActivity.this);
+                            alertDialogBuilder.setMessage("Request received for monitoring. Accept?");
+                            alertDialogBuilder.setPositiveButton("yes",
+                                    new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface arg0, int arg1) {
+                                            TimerTask timerTask = new BatteryLocationTimer();
+                                            timer = new Timer(true);
+                                            timer.scheduleAtFixedRate(timerTask, 0, 20 * 1000);
                                         }
+                                    });
 
-                                        Log.println(Log.INFO, "Request  : ", obj.toString());
-                                        connectionsClient.sendPayload(
-                                                masterEndpointId, Payload.fromStream(new ByteArrayInputStream(obj.toString().getBytes(UTF_8))));
-                                        finish();
+                            alertDialogBuilder.setNegativeButton("No", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int which) {
+                                    JSONObject obj = new JSONObject();
+                                    try {
+                                        obj.put("requestCode", requestCode);
+                                        obj.put("requestStatus", 500);
+                                        obj.put("deviceName", "slave device");
+                                    } catch (JSONException e) {
+                                        e.printStackTrace();
                                     }
-                                });
 
-                                AlertDialog alertDialog = alertDialogBuilder.create();
-                                alertDialog.show();
-
-
-                                break;
-                            case 101:
-                                //Request for Matrix Multiplication
-                                requestCounter++;
-                                Gson gson = new Gson();
-                                progressMessage.setText("No. of Request Served : " + requestCounter);
-                                progressMessage.setVisibility(View.VISIBLE);
-                                progressBar.setVisibility(View.VISIBLE);
-                                int A[][] = gson.fromJson(jsonObject.getString("A"), int[][].class);
-                                int B[][] = gson.fromJson(jsonObject.getString("B"), int[][].class);
-                                //Log.println(Log.INFO, "Matrix Number",""+( matrix[0][0]+1));
-                                //Make JSON object
-                                JSONObject matrixResponse = new JSONObject();
-                                String C ="matrix impl pending"; //gson.toJson(getMatrixMutliplication(A, B));
-                                Log.println(Log.INFO, "Matrix C", "" + C);
-                                try {
-                                    matrixResponse.put("request_code", requestCode);
-                                    matrixResponse.put("request_status", 200);
-                                    matrixResponse.put("device_name", "slave device");
-                                    matrixResponse.put("C", C);
-                                } catch (JSONException e) {
-                                    e.printStackTrace();
+                                    Log.println(Log.INFO, "Request  : ", obj.toString());
+                                    connClient.sendPayload(
+                                            masterEndpointId, Payload.fromStream(new ByteArrayInputStream(obj.toString().getBytes(UTF_8))));
+                                    finish();
                                 }
-                                connectionsClient.sendPayload(
-                                        masterEndpointId, Payload.fromStream(new ByteArrayInputStream(matrixResponse.toString().getBytes(UTF_8))));
-                                break;
-                            default:
-                                ;
+                            });
+
+                            AlertDialog alertDialog = alertDialogBuilder.create();
+                            alertDialog.show();
+
                         }
                     } catch (JSONException e) {
                         e.printStackTrace();
@@ -227,11 +231,30 @@ public class MainActivity extends AppCompatActivity {
                 }
             };
 
+    @CallSuper
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode, @NonNull String[] permissions, @NonNull int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results);
+
+        if (requestCode != 1) {
+            return;
+        }
+
+        for (int grantResult : results) {
+            if (grantResult == PackageManager.PERMISSION_DENIED) {
+                Toast.makeText(this, "App doesn't have permissions", Toast.LENGTH_LONG).show();
+                finish();
+                return;
+            }
+        }
+        recreate();
+    }
 
     private void resetUI() {
         masterEndpointId = null;
         masterName = null;
-        setStatusText(getString(R.string.STATUS_DISCONNECTED));
+        setStatus(getString(R.string.STATUS_DISCONNECTED));
         setMasterName(getString(R.string.no_master));
         setButtonState(false);
     }
@@ -240,8 +263,9 @@ public class MainActivity extends AppCompatActivity {
     private void setMasterName(String masterName) {
         masterText.setText(getString(R.string.master_name, masterName));
     }
+
     void setUiLocation() {
-        fusedLocationClient.getLastLocation()
+        fusedLocationProviderClient.getLastLocation()
                 .addOnSuccessListener(this, new OnSuccessListener<Location>() {
                     @Override
                     public void onSuccess(Location location) {
@@ -257,7 +281,7 @@ public class MainActivity extends AppCompatActivity {
                 }).addOnFailureListener(this, new OnFailureListener() {
             @Override
             public void onFailure(@NonNull Exception e) {
-                Log.d("failure", e.getMessage());
+                Log.e("failure", e.getMessage());
             }
         }).addOnCanceledListener(this, new OnCanceledListener() {
             @Override
@@ -280,7 +304,7 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    double batteryStatus = getBatteryStatus();
+                    double batteryStatus = getBatteryLevel();
                     batteryProgress = (ProgressBar) findViewById(R.id.progressBar6);
                     batteryProgress.setProgress((int) batteryStatus);
                     batteryLevel.setText(batteryStatus + "%");
@@ -288,29 +312,30 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
         }
-}
-    private double getBatteryStatus() {
-        IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-        batteryStatus = this.registerReceiver(null, ifilter);
-        int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-        int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+    }
 
-        return level * 100 / (double) scale;
+    private double getBatteryLevel() {
+        IntentFilter intentFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        batteryStatus = this.registerReceiver(null, intentFilter);
+        int bLevel = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, 0);
+        int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, 0);
+
+        return bLevel * 100 / (double) scale;
     }
 
     private void startDiscovery() {
-        connectionsClient.startDiscovery(
+        connClient.startDiscovery(
                 getPackageName(), endpointDiscoveryCallback,
                 new DiscoveryOptions.Builder().setStrategy(STRATEGY).build());
     }
 
-    // Callbacks for finding other devices
+
     private final EndpointDiscoveryCallback endpointDiscoveryCallback =
             new EndpointDiscoveryCallback() {
                 @Override
                 public void onEndpointFound(String endpointId, DiscoveredEndpointInfo info) {
                     Log.i(TAG, "Endpoint found: connecting");
-                    connectionsClient.requestConnection("slave", endpointId, connectionLifecycleCallback);
+                    connClient.requestConnection("slave", endpointId, connectionLifecycleCallback);
                 }
 
                 @Override
@@ -318,29 +343,34 @@ public class MainActivity extends AppCompatActivity {
                 }
             };
 
-    // Callbacks for connections to other devices
+    private void startAdvertising() {
+        connClient.startAdvertising(
+                "slave", getPackageName(), connectionLifecycleCallback,
+                new AdvertisingOptions.Builder().setStrategy(STRATEGY).build());
+    }
+
+
     private final ConnectionLifecycleCallback connectionLifecycleCallback =
             new ConnectionLifecycleCallback() {
                 @Override
-                public void onConnectionInitiated(final String endpointId, final ConnectionInfo connectionInfo) {
+                public void onConnectionInitiated(final String endpointId, final ConnectionInfo connInfo) {
 
-                    Log.i(TAG, "onConnectionInitiated: accepting connection");
 
                     AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(MainActivity.this);
-                    alertDialogBuilder.setMessage("Are you sure,You wanted to accept the request ?");
+                    alertDialogBuilder.setMessage("Accept request?");
                     alertDialogBuilder.setPositiveButton("yes",
                             new DialogInterface.OnClickListener() {
                                 @Override
-                                public void onClick(DialogInterface arg0, int arg1) {
-                                    Toast.makeText(MainActivity.this, "You clicked yes button", Toast.LENGTH_LONG).show();
-                                    connectionsClient.acceptConnection(endpointId, payloadCallback);
-                                    masterName = connectionInfo.getEndpointName();
+                                public void onClick(DialogInterface dialogInterface, int arg1) {
+                                    Toast.makeText(MainActivity.this, "Connected", Toast.LENGTH_SHORT).show();
+                                    connClient.acceptConnection(endpointId, payloadCallback);
+                                    masterName = connInfo.getEndpointName();
                                 }
                             });
 
                     alertDialogBuilder.setNegativeButton("No", new DialogInterface.OnClickListener() {
                         @Override
-                        public void onClick(DialogInterface dialog, int which) {
+                        public void onClick(DialogInterface dialogInterface, int arg0) {
                             finish();
                         }
                     });
@@ -354,74 +384,74 @@ public class MainActivity extends AppCompatActivity {
                 @Override
                 public void onConnectionResult(String endpointId, ConnectionResolution result) {
                     if (result.getStatus().isSuccess()) {
-                        Log.i(TAG, "onConnectionResult: connection successful");
+                        Log.i(TAG, "connection successful");
                         sendBatteryLocationData(100);
                         masterEndpointId = endpointId;
                         setMasterName(masterName);
-                        setStatusText(getString(R.string.STATUS_CONNECTED));
+                        setStatus(getString(R.string.STATUS_CONNECTED));
                         setButtonState(true);
 
                     } else {
-                        Log.i(TAG, "onConnectionResult: connection failed");
+                        Log.e(TAG, "connection failed");
                     }
                 }
 
                 @Override
                 public void onDisconnected(String endpointId) {
-                    Log.i(TAG, "onDisconnected: disconnected from the opponent");
+                    Log.i(TAG, "Disconnected from Master");
                     findMasterButton.setVisibility(View.VISIBLE);
                     progressMessage.setVisibility(View.GONE);
                     progressBar.setVisibility(View.GONE);
-                    connectionsClient.stopDiscovery();
+                    connClient.stopDiscovery();
                     requestCounter = 0;
                     resetUI();
                     if (timer != null)
                         timer.cancel();
                 }
             };
+
     private void setButtonState(boolean connected) {
         findMasterButton.setEnabled(true);
         findMasterButton.setVisibility(connected ? View.GONE : View.VISIBLE);
         disconnectButton.setVisibility(connected ? View.VISIBLE : View.GONE);
     }
 
-
     public void disconnect(View view) {
-        connectionsClient.disconnectFromEndpoint(masterEndpointId);
+        connClient.disconnectFromEndpoint(masterEndpointId);
         resetUI();
     }
-    public void findMaster(View view) {
 
+    public void findMaster(View view) {
         startDiscovery();
-        setStatusText(getString(R.string.status_searching));
+        setStatus(getString(R.string.status_searching));
         findMasterButton.setEnabled(false);
     }
 
-    private void setStatusText(String text) {
+    private void setStatus(String text) {
         status.setText(text);
     }
 
-    private void sendBatteryLocationData(final int requestCode) {
-        fusedLocationClient.getLastLocation()
+    private void sendBatteryLocationData(final int code) {
+        fusedLocationProviderClient.getLastLocation()
                 .addOnSuccessListener(this, new OnSuccessListener<Location>() {
                     @Override
-                    public void onSuccess(Location location) {
-                        if (location != null) {
-                            JSONObject obj = new JSONObject();
+                    public void onSuccess(Location loc) {
+                        if (loc != null) {
+                            JSONObject json = new JSONObject();
                             try {
-                                obj.put("request_code", requestCode);
-                                obj.put("request_status", 200);
-                                obj.put("name", "slave device");
-                                obj.put("batteryLevel", getBatteryStatus());
-                                obj.put("latitude", location.getLatitude());
-                                obj.put("longitude", location.getLongitude());
+                                json.put("request_code", code);
+                                json.put("request_status", 200);
+                                json.put("name", "slave device");
+                                json.put("batteryLevel", getBatteryLevel());
+                                json.put("latitude", loc.getLatitude());
+                                json.put("longitude", loc.getLongitude());
                             } catch (JSONException e) {
-                                e.printStackTrace();
+                                Log.e(TAG, "error: Failed to parse json object");
                             }
 
-                            Log.println(Log.INFO, "payload : ", obj.toString());
-                            connectionsClient.sendPayload(
-                                    masterEndpointId, Payload.fromStream(new ByteArrayInputStream(obj.toString().getBytes(UTF_8))));
+                            Log.println(Log.INFO, "json string : ", json.toString());
+                            connClient.sendPayload(
+                                    masterEndpointId, Payload.fromStream(new ByteArrayInputStream(json.toString().getBytes(UTF_8))));
                         }
                     }
                 });
