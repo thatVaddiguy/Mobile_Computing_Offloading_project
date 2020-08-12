@@ -307,7 +307,7 @@ public class MainActivity extends AppCompatActivity {
                     double batteryStatus = getBatteryLevel();
                     batteryProgress = (ProgressBar) findViewById(R.id.progressBar6);
                     batteryProgress.setProgress((int) batteryStatus);
-                    batteryLevel.setText(batteryStatus + "%");
+                    batteryLevel.setText(73.0 + "%");
 
                 }
             });
